@@ -1,0 +1,24 @@
+name: hswift
+version: 0.0.1
+author: Mitroshin Maxim <rocco66max@gmail.com>
+
+category: API
+synopsis: API for Open Stack Swift object storage.
+
+cabal-version: >= 1.16
+tested-with: GHC ==7.6.*
+build-type: Simple
+
+library
+    ghc-options:      -Wall -fno-warn-orphans
+    default-language: Haskell2010
+    hs-source-dirs:   src
+    build-depends: base              == 4.6.*
+                 , http-conduit      == 1.9.*
+                 , bytestring        == 0.10.*
+                 , transformers      == 0.3.*
+                 , mtl               == 2.1.*
+                 , transformers-base == 0.4.*
+                 , case-insensitive  == 1.0.*
+                 , conduit           == 1.0.*
+    exposed-modules: Swift
