@@ -22,4 +22,9 @@ library
                  , case-insensitive  == 1.0.*
                  , conduit           == 1.0.*
                  , http-types        == 0.8.*
+                 , stringlike        == 0.0.*
+                 , http-streams      == 0.6.*
+                 , HsOpenSSL         == 0.10.*
+                 , HTTP              == 4000.2.*
+                 , exceptions        == 0.1.*
     exposed-modules: Swift
