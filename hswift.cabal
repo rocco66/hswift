@@ -20,11 +20,8 @@ library
                  , mtl               == 2.1.*
                  , transformers-base == 0.4.*
                  , case-insensitive  == 1.0.*
-                 , conduit           == 1.0.*
-                 , http-types        == 0.8.*
-                 , stringlike        == 0.0.*
-                 , http-streams      == 0.6.*
-                 , HsOpenSSL         == 0.10.*
                  , HTTP              == 4000.2.*
+                 , network           == 2.4.*
                  , exceptions        == 0.1.*
     exposed-modules: Swift
+    default-extensions: LambdaCase
