@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Swift
     ( module Swift.Connection
@@ -18,10 +19,13 @@ import Swift.Account
 import Data.Typeable (Typeable)
 import Data.Maybe (fromJust)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Catch (MonadCatch(throwM))
 
 import Network.HTTP (Request(rqURI), HeaderName(HdrCustom),
-                     setHeaders, mkHeader)
+                     setHeaders, mkHeader, findHeader)
 import Network.URI (URI, parseURI)
+
+type SwiftAuthToken = String
 
 data SelcdnAuth = SelcdnAuth
     { selcdnAuthAccount :: String
@@ -29,13 +33,23 @@ data SelcdnAuth = SelcdnAuth
     , selcdnAuthUrl     :: URI
     } deriving (Show, Eq, Typeable)
 
-instance SwiftAuthenticator SelcdnAuth where
+data SwiftConnectInfo = SwiftConnectInfo
+    { swiftConnectInfoUrl :: {-# UNPACK #-} !String
+    , swiftConnectToken   :: {-# UNPACK #-} !SwiftAuthToken }
+  deriving (Eq, Show)
+
+instance SwiftAuthenticator SelcdnAuth SwiftConnectInfo where
     mkRequestAuthInfo req SelcdnAuth { .. } =
       setHeaders (req { rqURI = selcdnAuthUrl })
           [ mkHeader (HdrCustom "X-Auth-User") selcdnAuthAccount
           , mkHeader (HdrCustom "X-Auth-Key") selcdnAuthKey ]
-    prepareRequest _a SwiftConnectInfo { .. } req = return $ setHeaders req
+    prepareRequest SwiftConnectInfo { .. } req =
+        setHeaders (req { rqURI = fromJust (parseURI swiftConnectInfoUrl) })
         [ mkHeader (HdrCustom "X-Auth-Token") swiftConnectToken ]
+    mkInfoState resp = do
+        swiftConnectInfoUrl <- findHeader (HdrCustom "X-Storage-Url") resp
+        swiftConnectToken <- findHeader (HdrCustom "X-Storage-Token") resp
+        return SwiftConnectInfo { .. }
 
 test :: IO ()
 test = let

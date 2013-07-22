@@ -7,12 +7,13 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 module Swift.Connection
     ( Swift
     , SwiftAuthenticator(..)
-    , SwiftConnectInfo(..)
     , SwiftAuthUrl
+    , SwiftException(..)
     , runSwift
     ) where
 
@@ -29,58 +30,48 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad (void)
 
 import Control.Monad.Catch (CatchT, MonadCatch(throwM), Exception, runCatchT)
-import Network.HTTP (Request, HeaderName(HdrCustom), RequestMethod(GET),
-                     simpleHTTP, findHeader, mkRequest)
+import Network.HTTP (Request, Response, HeaderName(HdrCustom),
+                     RequestMethod(GET), simpleHTTP, findHeader, mkRequest)
 import Network.URI (nullURI)
 
 type SwiftAuthUrl = String
 type Url = ByteString
-type SwiftAuthToken = String
 type AuthRequest = Request String
 
 data SwiftException = NoStorageUrlSwiftException
                     | NoStorageTokenSwiftException
                     | WrongPasswordSwiftException
                     | NoAuthHeaderSwiftException String
+                    | CanNotMakeInfoStateSwiftException
                     | SomeSwiftException
      deriving (Show, Typeable)
 
 instance Exception SwiftException
 
-class SwiftAuthenticator a where
-    mkRequestAuthInfo :: AuthRequest -> a -> AuthRequest
-    prepareRequest :: a -> SwiftConnectInfo -> Request String -> Swift a (Request String)
-    prepareRequest _a _conInfo = return
+class SwiftAuthenticator auth state | auth -> state, state -> auth where
+    mkRequestAuthInfo :: AuthRequest -> auth -> AuthRequest
+    mkInfoState :: Response String -> Maybe state
+    prepareRequest :: state -> Request String -> Request String
+    prepareRequest _s = id
 
-data SwiftConnectInfo = SwiftConnectInfo
-    { swiftConnectInfoUrl :: {-# UNPACK #-} !String
-    , swiftConnectToken   :: {-# UNPACK #-} !SwiftAuthToken }
-  deriving (Eq, Show)
-
-newtype Swift auth res = Swift { unSwift :: ReaderT auth
-                                         (StateT SwiftConnectInfo
+newtype Swift auth info res = Swift { unSwift :: ReaderT auth
+                                         (StateT info
                                              (CatchT IO)) res }
     deriving (Monad, Functor, Applicative, MonadReader auth,
-              MonadState SwiftConnectInfo, MonadIO, MonadCatch)
+              MonadState info, MonadIO, MonadCatch)
 
-makeAuthentification :: (SwiftAuthenticator auth) => Swift auth ()
+
+makeAuthentification :: (SwiftAuthenticator auth info) => Swift auth info ()
 makeAuthentification = do
     authReq <- mkRequestAuthInfo (mkRequest GET nullURI) <$> ask
 
-    let throwNoAuthHeader = throwM . NoAuthHeaderSwiftException
-        findHeaderE name resp = maybe (throwNoAuthHeader name) return $
-                findHeader (HdrCustom name) resp
-
     conInfo <- liftIO (simpleHTTP authReq) >>= \case
         Left err -> throwM WrongPasswordSwiftException
-        Right resp-> do
-            swiftConnectInfoUrl <- findHeaderE "X-Storage-Url" resp
-            swiftConnectToken <- findHeaderE "X-Storage-Token" resp
-            return SwiftConnectInfo { .. }
+        Right resp -> maybe (throwM CanNotMakeInfoStateSwiftException)
+                            return $ mkInfoState resp
 
     put conInfo
 
-runSwift :: (SwiftAuthenticator auth) => auth -> Swift auth () -> IO ()
-runSwift authInfo action = let
-    initConInfo = SwiftConnectInfo "" ""  in
-    void $ runCatchT (runStateT (runReaderT (unSwift (makeAuthentification >> action)) authInfo ) initConInfo )
+runSwift :: (SwiftAuthenticator auth info) => auth -> Swift auth info () -> IO ()
+runSwift authInfo action =
+    void $ runCatchT (runStateT (runReaderT (unSwift (makeAuthentification >> action)) authInfo ) undefined )
