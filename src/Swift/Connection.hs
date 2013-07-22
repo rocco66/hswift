@@ -6,39 +6,37 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Swift.Connection
-    ( SwiftAuthenticator(..)
+    ( Swift
+    , SwiftAuthenticator(..)
+    , SwiftConnectInfo(..)
     , SwiftAuthUrl
-    , test
+    , runSwift
     ) where
 
 import Data.Functor ((<$>))
 import Data.ByteString (ByteString)
 import Data.Typeable (Typeable)
-import Data.Maybe (fromJust)
 import Control.Applicative (Applicative)
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Base (MonadBase)
 import Control.Monad.Reader (ReaderT)
 import Control.Monad.Reader.Class (MonadReader(ask))
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.State.Lazy (StateT(runStateT), MonadState(put, get))
+import Control.Monad.State.Lazy (StateT(runStateT), MonadState(put))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad (void)
-import qualified Data.List as List
-import qualified Data.ByteString.Char8 as Char8
 
 import Control.Monad.Catch (CatchT, MonadCatch(throwM), Exception, runCatchT)
-import Data.CaseInsensitive (CI)
-import Network.HTTP (Request, Response, HeaderName(HdrCustom),
-                     getRequest, setHeaders, mkHeader, simpleHTTP, findHeader,
-                     getResponseBody)
-import Network.URI (parseURI)
+import Network.HTTP (Request, HeaderName(HdrCustom), RequestMethod(GET),
+                     simpleHTTP, findHeader, mkRequest)
+import Network.URI (nullURI)
 
 type SwiftAuthUrl = String
 type Url = ByteString
 type SwiftAuthToken = String
+type AuthRequest = Request String
 
 data SwiftException = NoStorageUrlSwiftException
                     | NoStorageTokenSwiftException
@@ -49,73 +47,40 @@ data SwiftException = NoStorageUrlSwiftException
 
 instance Exception SwiftException
 
--- MonadIO m
 class SwiftAuthenticator a where
-    addRequestAuthInfo :: a -> Request b -> Request b
-    prepareRequest :: a -> Response r -> Request b -> Request b
-    prepareRequest auth response = id
-
-data SelcdnAuth = SelcdnAuth
-    { selcdnAuthAccount :: {-# UNPACK #-} !ByteString
-    , selcdnAuthKey     :: {-# UNPACK #-} !ByteString
-    , selcdnAuthUrl     :: String
-    } deriving (Show, Eq, Typeable)
-
-mkHeader' :: String -> String -> Header
-mkHeader' name val = mkHeader (HdrCustom name) $ Char8.unpack val
-
-instance SwiftAuthenticator SelcdnAuth where
-    addRequestAuthInfo SelcdnAuth { .. } = flip setHeaders
-        [ mkHeader' "X-Auth-User" selcdnAuthAccount
-        , mkHeader' "X-Auth-Key" selcdnAuthKey ]
-    prepareRequest _a resp = flip setHeaders
-        [ mkHeader' "X-STorage-Key" ]
+    mkRequestAuthInfo :: AuthRequest -> a -> AuthRequest
+    prepareRequest :: a -> SwiftConnectInfo -> Request String -> Swift a (Request String)
+    prepareRequest _a _conInfo = return
 
 data SwiftConnectInfo = SwiftConnectInfo
     { swiftConnectInfoUrl :: {-# UNPACK #-} !String
     , swiftConnectToken   :: {-# UNPACK #-} !SwiftAuthToken }
   deriving (Eq, Show)
 
-newtype Swift a = Swift { unSwift :: ReaderT SelcdnAuth
+newtype Swift auth res = Swift { unSwift :: ReaderT auth
                                          (StateT SwiftConnectInfo
-                                             (CatchT IO)) a }
-    deriving (Monad, Functor, Applicative, MonadReader SelcdnAuth,
+                                             (CatchT IO)) res }
+    deriving (Monad, Functor, Applicative, MonadReader auth,
               MonadState SwiftConnectInfo, MonadIO, MonadCatch)
 
-makeAuthentification :: Swift ()
+makeAuthentification :: (SwiftAuthenticator auth) => Swift auth ()
 makeAuthentification = do
-    authInfo <- ask
+    authReq <- mkRequestAuthInfo (mkRequest GET nullURI) <$> ask
 
-    let authReq = addRequestAuthInfo authInfo $
-            getRequest $ selcdnAuthUrl authInfo
-        throwNoAuthHeader = throwM . NoAuthHeaderSwiftException
+    let throwNoAuthHeader = throwM . NoAuthHeaderSwiftException
         findHeaderE name resp = maybe (throwNoAuthHeader name) return $
                 findHeader (HdrCustom name) resp
 
-    conInfo <- liftIO $ simpleHTTP authReq >>= \case
+    conInfo <- liftIO (simpleHTTP authReq) >>= \case
         Left err -> throwM WrongPasswordSwiftException
-        Right resp -> do
+        Right resp-> do
             swiftConnectInfoUrl <- findHeaderE "X-Storage-Url" resp
             swiftConnectToken <- findHeaderE "X-Storage-Token" resp
             return SwiftConnectInfo { .. }
 
     put conInfo
 
-getAccount :: Swift String
-getAccount = do
-    SwiftConnectInfo { .. } <- get
-    let baseRequest = getRequest swiftConnectInfoUrl
-    result <- liftIO $ simpleHTTP $ prepareRequest baseRequest
-    liftIO $ getResponseBody result
-
-runSwift :: SelcdnAuth -> Swift () -> IO ()
+runSwift :: (SwiftAuthenticator auth) => auth -> Swift auth () -> IO ()
 runSwift authInfo action = let
     initConInfo = SwiftConnectInfo "" ""  in
     void $ runCatchT (runStateT (runReaderT (unSwift (makeAuthentification >> action)) authInfo ) initConInfo )
-
-test :: IO ()
-test = let
-    authentificator = SelcdnAuth { selcdnAuthAccount = "7091_hswift"
-                                 , selcdnAuthKey = "bh18Px6zxg"
-                                 , selcdnAuthUrl = "http://auth.selcdn.ru" } in
-    runSwift authentificator (getAccount >>= liftIO . putStrLn . show)

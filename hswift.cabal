@@ -23,5 +23,6 @@ library
                  , HTTP              == 4000.2.*
                  , network           == 2.4.*
                  , exceptions        == 0.1.*
+                 , aeson             == 0.6.*
     exposed-modules: Swift
     default-extensions: LambdaCase
