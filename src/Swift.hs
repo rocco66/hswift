@@ -21,8 +21,6 @@ import Data.Maybe (fromJust)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Catch (MonadCatch(throwM))
 
-import Network.HTTP (Request(rqURI), HeaderName(HdrCustom),
-                     setHeaders, mkHeader, findHeader)
 import Network.URI (URI, parseURI)
 
 type SwiftAuthToken = String

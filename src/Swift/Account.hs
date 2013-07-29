@@ -5,10 +5,7 @@ module Swift.Account
     , getAccount
     ) where
 
-import Network.HTTP (Request(rqURI), Response, HeaderName(HdrCustom), Header,
-                     RequestMethod(GET),
-                     mkRequest, setHeaders, mkHeader, simpleHTTP, findHeader,
-                     getResponseBody)
+import Network.HTTP.Conduit (Request)
 import Network.URI (nullURI)
 import Control.Monad.Reader.Class (MonadReader(ask))
 import Control.Monad.State.Lazy (StateT(runStateT), MonadState(put, get))
