@@ -25,5 +25,7 @@ library
                  , aeson             == 0.6.*
                  , http-types        == 0.8.*
                  , conduit           == 1.0.*
+                 , monad-control     == 0.3.*
+                 , resourcet         == 0.4.*
     exposed-modules: Swift
     default-extensions: LambdaCase
