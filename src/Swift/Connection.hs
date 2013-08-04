@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -20,22 +19,22 @@ module Swift.Connection
     , SwiftAuthUrl
     , SwiftException(..)
     , runSwift
+    , getUserState
+    , getManager
     ) where
 
 import Data.Functor ((<$>))
-import Data.ByteString (ByteString)
 import Data.Typeable (Typeable)
 import Control.Applicative (Applicative)
 import Control.Monad (liftM)
 import Control.Monad.Base (MonadBase(..))
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (ReaderT(ReaderT))
+import Control.Monad.Reader (ReaderT)
 import Control.Monad.Reader.Class (MonadReader(ask))
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.State.Lazy (StateT(StateT, runStateT),
+import Control.Monad.State.Lazy (StateT(runStateT),
                                  MonadState(put, get))
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Control (MonadBaseControl(..))
 import Control.Monad.Trans.Resource (MonadUnsafeIO(..))
 import Control.Monad (void)
@@ -43,15 +42,12 @@ import qualified Data.ByteString.Lazy as LazyByteString
 
 import Data.Conduit (MonadResource, ResourceT, MonadThrow(monadThrow),
                      runResourceT)
-import Control.Monad.Catch (CatchT(CatchT), MonadCatch(throwM), Exception,
-                            runCatchT)
+import Control.Monad.Catch (Exception)
 import Network.HTTP.Conduit (Request(method), Response, Manager, newManager,
                              def, httpLbs, responseStatus)
-import Network.URI (nullURI)
 import Network.HTTP.Types (statusIsSuccessful)
 
 type SwiftAuthUrl = String
-type Url = ByteString
 
 data SwiftException = NoStorageUrlSwiftException
                     | NoStorageTokenSwiftException
@@ -94,8 +90,8 @@ instance MonadBaseControl IO (Swift auth info) where
         { unSwiftStM :: StM (ReaderT auth
                                 (StateT (SwiftState info)
                                         (ResourceT IO))) a }
-    liftBaseWith f = Swift . liftBaseWith $
-        \runInBase -> f $ liftM SwiftStM . runInBase . unSwiftStM
+    liftBaseWith f = Swift . liftBaseWith $ \runInBase ->
+        f $ liftM SwiftStM . runInBase . unSwift
     restoreM = Swift . restoreM . unSwiftStM
 
 -- instance (SwiftAuthenticator auth info)
@@ -132,12 +128,10 @@ makeAuthentification = do
     manager <- getManager
 
     response <- httpLbs authReq manager
-    conInfo <-  case isSuccessfulResponse response of
+    case isSuccessfulResponse response of
         True -> maybe (monadThrow CanNotMakeInfoStateSwiftException)
-                            return $ mkInfoState response
+                            putUserState $ mkInfoState response
         False -> monadThrow WrongPasswordSwiftException
-
-    put conInfo
 
 runSwift :: (SwiftAuthenticator auth info) => auth -> Swift auth info () -> IO ()
 runSwift authInfo action = do

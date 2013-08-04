@@ -29,3 +29,4 @@ library
                  , resourcet         == 0.4.*
     exposed-modules: Swift
     default-extensions: LambdaCase
+                        OverloadedStrings

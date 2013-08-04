@@ -5,24 +5,27 @@ module Swift.Account
     , getAccount
     ) where
 
-import Network.HTTP.Conduit (Request)
-import Network.URI (nullURI)
-import Control.Monad.Reader.Class (MonadReader(ask))
-import Control.Monad.State.Lazy (StateT(runStateT), MonadState(put, get))
 import Control.Monad.IO.Class (liftIO)
+import qualified Data.ByteString.Lazy as LazyByteString
+
+import Network.HTTP.Conduit (Request(path), def, httpLbs, responseBody, withManager, newManager)
+import Network.HTTP.Types.Header (ResponseHeaders)
 
 import Data.Aeson (Array)
 
-import Swift.Common (setPreferableFormat)
-import Swift.Connection (Swift, SwiftAuthenticator(..))
+import Swift.Connection (Swift, SwiftAuthenticator(..), prepareRequest,
+                         getManager, getUserState)
 
-data Account = Account { accountHeaders    :: [Header]
+type LazyByteString = LazyByteString.ByteString
+
+data Account = Account { accountHeaders    :: ResponseHeaders
                        , accountContainers :: Array }
 
-getAccount :: (SwiftAuthenticator auth info) => Swift auth info String
+getAccount :: (SwiftAuthenticator auth info) => Swift auth info LazyByteString
 getAccount = do
-    conInfo <- get
-    let request = prepareRequest conInfo (mkRequest GET nullURI)
-    result <- liftIO $ simpleHTTP
-        (request { rqURI = setPreferableFormat (rqURI request) })
-    liftIO $ getResponseBody result
+    conInfo <- getUserState
+    let request = prepareRequest conInfo $ def
+    liftIO $ putStrLn $ show request
+    manager <- getManager
+    response <- httpLbs request manager
+    return $ responseBody response

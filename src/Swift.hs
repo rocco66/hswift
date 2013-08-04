@@ -16,43 +16,72 @@ import Swift.Account
 -- import Swift.Container
 -- import Swift.Object
 
+import Data.Functor ((<$>))
+import Data.Foldable (find)
 import Data.Typeable (Typeable)
-import Data.Maybe (fromJust)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Catch (MonadCatch(throwM))
+import qualified Data.ByteString as StrictByteString
+import qualified Data.ByteString.Char8 as Char8
 
-import Network.URI (URI, parseURI)
+import Network.HTTP.Conduit (Request(requestHeaders), responseHeaders,
+                             host, secure, port, parseUrl, withManager, httpLbs)
+import Network.HTTP.Types (HeaderName, ResponseHeaders)
 
-type SwiftAuthToken = String
+type StrictByteString = StrictByteString.ByteString
+type SwiftAuthToken = StrictByteString
 
 data SelcdnAuth = SelcdnAuth
-    { selcdnAuthAccount :: String
-    , selcdnAuthKey     :: String
-    , selcdnAuthUrl     :: URI
+    { selcdnAuthAccount :: StrictByteString
+    , selcdnAuthKey     :: StrictByteString
+    , selcdnAuthUrl     :: StrictByteString
     } deriving (Show, Eq, Typeable)
 
 data SwiftConnectInfo = SwiftConnectInfo
-    { swiftConnectInfoUrl :: {-# UNPACK #-} !String
-    , swiftConnectToken   :: {-# UNPACK #-} !SwiftAuthToken }
+    { swiftConnectInfoHost :: {-# UNPACK #-} !StrictByteString
+    , swiftConnectInfoSecure :: {-# UNPACK #-} !Bool
+    , swiftConnectInfoPort :: {-# UNPACK #-} !Int
+    , swiftConnectToken    :: {-# UNPACK #-} !SwiftAuthToken }
   deriving (Eq, Show)
 
 instance SwiftAuthenticator SelcdnAuth SwiftConnectInfo where
     mkRequestAuthInfo req SelcdnAuth { .. } =
-      setHeaders (req { rqURI = selcdnAuthUrl })
-          [ mkHeader (HdrCustom "X-Auth-User") selcdnAuthAccount
-          , mkHeader (HdrCustom "X-Auth-Key") selcdnAuthKey ]
+        req { requestHeaders = updatedHeaders
+            , host           = selcdnAuthUrl
+            -- , secure         = True
+            -- , port           = 443
+            }
+      where
+        updatedHeaders = requestHeaders req ++
+            [ ("X-Auth-User", selcdnAuthAccount)
+            , ("X-Auth-Key", selcdnAuthKey) ]
     prepareRequest SwiftConnectInfo { .. } req =
-        setHeaders (req { rqURI = fromJust (parseURI swiftConnectInfoUrl) })
-        [ mkHeader (HdrCustom "X-Auth-Token") swiftConnectToken ]
-    mkInfoState resp = do
-        swiftConnectInfoUrl <- findHeader (HdrCustom "X-Storage-Url") resp
-        swiftConnectToken <- findHeader (HdrCustom "X-Storage-Token") resp
+        req { requestHeaders = updatedHeaders
+            , host = swiftConnectInfoHost
+            , port = swiftConnectInfoPort
+            , secure = swiftConnectInfoSecure }
+      where
+        updatedHeaders = requestHeaders req ++
+            [ ("X-Auth-Token", swiftConnectToken) ]
+    mkInfoState resp = let headers = responseHeaders resp in do
+        storageUrl <- findHeader "X-Storage-Url" headers
+        defReq <- parseUrl $ Char8.unpack storageUrl
+        let swiftConnectInfoHost   = host defReq
+            swiftConnectInfoPort = port defReq
+            swiftConnectInfoSecure = swiftConnectInfoPort == 443
+        swiftConnectToken <- findHeader "X-Storage-Token" headers
         return SwiftConnectInfo { .. }
+      where
+        findHeader :: HeaderName -> ResponseHeaders -> Maybe StrictByteString
+        findHeader name headers = snd <$> find ((name ==) . fst) headers
 
 test :: IO ()
 test = let
-    authUri = fromJust $ parseURI "http://auth.selcdn.ru"
     authentificator = SelcdnAuth { selcdnAuthAccount = "7091_hswift"
                                  , selcdnAuthKey = "bh18Px6zxg"
-                                 , selcdnAuthUrl = authUri } in
+                                 , selcdnAuthUrl = "auth.selcdn.ru" } in do
+
+    -- req' <- parseUrl "https://auth.selcdn.ru"
+    -- putStrLn $ show req'
+    -- withManager (httpLbs req') >>= putStrLn . show
+
     runSwift authentificator (getAccount >>= liftIO . putStrLn . show)

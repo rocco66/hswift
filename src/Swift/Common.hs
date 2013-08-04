@@ -2,7 +2,7 @@ module Swift.Common
     ( setPreferableFormat
     ) where
 
-import Network.URI (URI(uriQuery))
+import Network.HTTP.Conduit (Request(queryString))
 
-setPreferableFormat :: URI -> URI
-setPreferableFormat uri = uri { uriQuery = "?format=json" }
+setPreferableFormat :: Request m -> Request m
+setPreferableFormat req = req { queryString = "?format=json" }
