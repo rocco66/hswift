@@ -24,7 +24,7 @@ import qualified Data.ByteString as StrictByteString
 import qualified Data.ByteString.Char8 as Char8
 
 import Network.HTTP.Conduit (Request(requestHeaders), responseHeaders,
-                             host, secure, port, parseUrl, withManager, httpLbs)
+                             host, secure, port, parseUrl)
 import Network.HTTP.Types (HeaderName, ResponseHeaders)
 
 type StrictByteString = StrictByteString.ByteString

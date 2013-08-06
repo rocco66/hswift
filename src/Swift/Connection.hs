@@ -44,8 +44,11 @@ import Data.Conduit (MonadResource, ResourceT, MonadThrow(monadThrow),
                      runResourceT)
 import Control.Monad.Catch (Exception)
 import Network.HTTP.Conduit (Request(method), Response, Manager, newManager,
-                             def, httpLbs, responseStatus)
+                             def, httpLbs, responseStatus,
+                             managerResponseTimeout)
 import Network.HTTP.Types (statusIsSuccessful)
+
+import Swift.Common (LazyByteString)
 
 type SwiftAuthUrl = String
 
@@ -54,6 +57,7 @@ data SwiftException = NoStorageUrlSwiftException
                     | WrongPasswordSwiftException
                     | NoAuthHeaderSwiftException String
                     | CanNotMakeInfoStateSwiftException
+                    | UnknownSwift LazyByteString
                     | SomeSwiftException
      deriving (Show, Typeable)
 
@@ -135,7 +139,7 @@ makeAuthentification = do
 
 runSwift :: (SwiftAuthenticator auth info) => auth -> Swift auth info () -> IO ()
 runSwift authInfo action = do
-    manager <- newManager def
+    manager <- newManager $ def { managerResponseTimeout = Just 60000000 }
     let initState = SwiftState { swiftStateManager = manager
                                , swiftStateInfo    = undefined } in
         void $ runResourceT

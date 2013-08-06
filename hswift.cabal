@@ -27,6 +27,7 @@ library
                  , conduit           == 1.0.*
                  , monad-control     == 0.3.*
                  , resourcet         == 0.4.*
+                 , attoparsec        == 0.10.*
     exposed-modules: Swift
     default-extensions: LambdaCase
                         OverloadedStrings
