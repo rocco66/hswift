@@ -13,7 +13,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Swift.Connection
+module Swift.Monad
     ( Swift
     , SwiftAuthenticator(..)
     , SwiftAuthUrl
@@ -49,6 +49,7 @@ import Network.HTTP.Conduit (Request(method), Response, Manager, newManager,
 import Network.HTTP.Types (statusIsSuccessful)
 
 import Swift.Common (LazyByteString)
+import Swift.Url (useHttps)
 
 type SwiftAuthUrl = String
 
@@ -67,10 +68,11 @@ data SwiftState info = SwiftState { swiftStateManager :: Manager
 instance Exception SwiftException
 
 class SwiftAuthenticator auth state | auth -> state, state -> auth where
-    mkRequestAuthInfo :: Request (Swift auth state )
-                      -> auth
+    mkRequestAuthInfo :: auth
+                      -> Request (Swift auth state )
                       -> Request (Swift auth state)
     mkInfoState :: Response LazyByteString.ByteString -> Maybe state
+    getStorageUrl :: state -> ByteString
     prepareRequest :: state
                    -> Request (Swift auth state)
                    -> Request (Swift auth state)
@@ -126,9 +128,10 @@ isSuccessfulResponse :: Response a -> Bool
 isSuccessfulResponse = statusIsSuccessful . responseStatus
 
 makeAuthentification :: (SwiftAuthenticator auth info)
-                     => Swift auth info ()
-makeAuthentification = do
-    authReq <- mkRequestAuthInfo (def { method = "GET" }) <$> ask
+                     => URL -> Swift auth info ()
+makeAuthentification url = do
+    authentificator <- ask
+    authReq <- mkRequestAuthInfo authentificator defaultAuthReqeust
     manager <- getManager
 
     response <- httpLbs authReq manager
@@ -136,15 +139,36 @@ makeAuthentification = do
         True -> maybe (monadThrow CanNotMakeInfoStateSwiftException)
                             putUserState $ mkInfoState response
         False -> monadThrow WrongPasswordSwiftException
+  where
+    defaultAuthReqeust = if useHttps url then
+            def { method = "GET" , secure = True , port = 443 }
+        else
+            def { method = "GET" }
 
-runSwift :: (SwiftAuthenticator auth info) => auth -> Swift auth info () -> IO ()
-runSwift authInfo action = do
+prepareRequestAndParseUrl :: Swift auth info (Request (Swift auth state))
+prepareRequestAndParseUrl = do
+    conInfo <- getUserState
+    requestWithUserInfo <- prepareRequest (mkDefaultAuthRequest conInfo) conInfo
+    -- parseUrl
+  where
+    mkDefaultAuthRequest conInfo = if useHttps $ getStorageUrl conInfo then
+            def { secure = True , port = 443 }
+        else
+            def
+
+
+runSwift :: (SwiftAuthenticator auth info)
+         => URL
+         -> auth
+         -> Swift auth info ()
+         -> IO ()
+runSwift url authInfo action = do
     manager <- newManager $ def { managerResponseTimeout = Just 60000000 }
     let initState = SwiftState { swiftStateManager = manager
                                , swiftStateInfo    = undefined } in
         void $ runResourceT
             (runStateT
                 (runReaderT
-                    (unSwift (makeAuthentification >> action))
+                    (unSwift (makeAuthentification url >> action))
                     authInfo)
                 initState)
