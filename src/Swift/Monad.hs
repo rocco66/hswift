@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -21,6 +20,7 @@ module Swift.Monad
     , runSwift
     , getUserState
     , getManager
+    , prepareRequestAndParseUrl
     ) where
 
 import Data.Functor ((<$>))
@@ -43,12 +43,12 @@ import qualified Data.ByteString.Lazy as LazyByteString
 import Data.Conduit (MonadResource, ResourceT, MonadThrow(monadThrow),
                      runResourceT)
 import Control.Monad.Catch (Exception)
-import Network.HTTP.Conduit (Request(method), Response, Manager, newManager,
-                             def, httpLbs, responseStatus,
+import Network.HTTP.Conduit (Request(method, secure, port), Response, Manager,
+                             newManager, def, httpLbs, responseStatus,
                              managerResponseTimeout)
 import Network.HTTP.Types (statusIsSuccessful)
 
-import Swift.Common (LazyByteString)
+import Swift.Types (URL, LazyByteString, StrictByteString)
 import Swift.Url (useHttps)
 
 type SwiftAuthUrl = String
@@ -58,7 +58,7 @@ data SwiftException = NoStorageUrlSwiftException
                     | WrongPasswordSwiftException
                     | NoAuthHeaderSwiftException String
                     | CanNotMakeInfoStateSwiftException
-                    | UnknownSwift LazyByteString
+                    | UnknownSwift StrictByteString  -- split on many exceptions
                     | SomeSwiftException
      deriving (Show, Typeable)
 
@@ -69,10 +69,10 @@ instance Exception SwiftException
 
 class SwiftAuthenticator auth state | auth -> state, state -> auth where
     mkRequestAuthInfo :: auth
-                      -> Request (Swift auth state )
+                      -> Request (Swift auth state)
                       -> Request (Swift auth state)
     mkInfoState :: Response LazyByteString.ByteString -> Maybe state
-    getStorageUrl :: state -> ByteString
+    getStorageUrl :: state -> StrictByteString
     prepareRequest :: state
                    -> Request (Swift auth state)
                    -> Request (Swift auth state)
@@ -131,7 +131,7 @@ makeAuthentification :: (SwiftAuthenticator auth info)
                      => URL -> Swift auth info ()
 makeAuthentification url = do
     authentificator <- ask
-    authReq <- mkRequestAuthInfo authentificator defaultAuthReqeust
+    let authReq = mkRequestAuthInfo authentificator defaultAuthReqeust
     manager <- getManager
 
     response <- httpLbs authReq manager
@@ -145,11 +145,13 @@ makeAuthentification url = do
         else
             def { method = "GET" }
 
-prepareRequestAndParseUrl :: Swift auth info (Request (Swift auth state))
+
+
+prepareRequestAndParseUrl :: (SwiftAuthenticator auth info)
+                          => Swift auth info (Request (Swift auth info))
 prepareRequestAndParseUrl = do
     conInfo <- getUserState
-    requestWithUserInfo <- prepareRequest (mkDefaultAuthRequest conInfo) conInfo
-    -- parseUrl
+    return $ prepareRequest conInfo (mkDefaultAuthRequest conInfo)
   where
     mkDefaultAuthRequest conInfo = if useHttps $ getStorageUrl conInfo then
             def { secure = True , port = 443 }

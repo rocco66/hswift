@@ -1,15 +1,19 @@
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module Swift.Example (test) where
 
 import Control.Monad.IO.Class (liftIO)
-import qualified Data.ByteString (ByteString)
+import Data.ByteString (ByteString)
 
+import Swift.Account (getAccount)
 import Swift.Monad (SwiftAuthenticator(..), runSwift)
 import Swift.Helpers (addHeader, addHeaders, findHeaderInResponse)
 
 data SelcdnAuth = SelcdnAuth
     { selcdnAuthAccount :: ByteString
     , selcdnAuthKey     :: ByteString
-    } deriving (Show, Eq, Typeable)
+    } deriving (Show, Eq)
 
 data SwiftConnectInfo = SwiftConnectInfo
     { swiftConnectInfoStorageUrl :: {-# UNPACK #-} !ByteString

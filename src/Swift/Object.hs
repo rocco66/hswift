@@ -1,16 +1,18 @@
 module Swift.Object
     ( Object(..)
-    , getObject
+    , ObjectInfo
+    -- , getObject
     ) where
 
 import qualified Data.Aeson as Aeson
 
-data ObjectInfo = ObjectInfo { objectInfoObjectCount :: Integer
-                             , objectInfoBytesUsed   :: Integer
-                             } deriving (Eq, Show)
+import Swift.Types (StrictByteString, LazyByteString)
+
+newtype ObjectInfo = ObjectInfo [(StrictByteString, StrictByteString)]
+  deriving (Eq, Show)
 
 data Object = Object { objectHeaders :: ObjectInfo
-                     , conatinerObjects :: [ObjectInfo] }
-  deriving (Eq, Show, Typeable)
+                     , objectData    :: StrictByteString }
+  deriving (Eq, Show)
 
-getObject = undefined
+-- getObject = undefined

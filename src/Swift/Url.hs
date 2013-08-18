@@ -1,9 +1,9 @@
 module Swift.Url (useHttps) where
 
-import Swift.Common (StrictByteString)
+import Swift.Types (StrictByteString)
 import qualified Data.ByteString as StrictByteString
 
 -- monad function ???
 -- TODO: StringLike argument ???
-useHttps :: StictByteString -> Bool
-useHttps = "https://" `StrictByteString.isPrefixOf
+useHttps :: StrictByteString -> Bool
+useHttps = StrictByteString.isPrefixOf "https://"

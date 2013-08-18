@@ -6,19 +6,29 @@ module Swift.Account
     ) where
 
 import Data.ByteString.Lazy (toStrict)
+import qualified Data.List as List
+
+import Data.Monoid ((<>))
+import Data.Functor ((<$>))
 
 import Data.Conduit (MonadThrow(monadThrow))
 import Network.HTTP.Conduit (def, httpLbs, responseBody, responseHeaders)
 import Network.HTTP.Types.Header (ResponseHeaders, Header)
-import Data.Aeson (Value, json)
+import Data.Aeson (Value(Array), json)
 import Data.Attoparsec.ByteString.Lazy (Result(Fail, Done), parse)
 import Data.Attoparsec.Text(digit, eitherResult, many1)
-import qualified Data.List as List
+import Data.CaseInsensitive (original)
+import Data.String.Like (bs)
 
 import Swift.Monad (Swift, SwiftAuthenticator(..),
                     getManager, getUserState,
-                    SwiftException(SomeSwiftException, UnknownSwift))
-import Swift.Common (setPreferableFormat, LazyByteString)
+                    SwiftException(SomeSwiftException, UnknownSwift),
+                    prepareRequestAndParseUrl)
+
+import Swift.Common (setPreferableFormat)
+import Swift.Types (StrictByteString, LazyByteString)
+import Swift.Container (ContainerInfo, mkContainersInfoFromJson)
+import Swift.Common (castHeadersToBsPair)
 
 -- containerCount :: (SwiftAuthenticator auth info)
 --                => Account
@@ -39,21 +49,22 @@ import Swift.Common (setPreferableFormat, LazyByteString)
  -- 'x-timestamp': '1331550165.46492',
  -- 'x-transfered-bytes': '318378717110'}
 
-data AccountInfo = AccountInfo { accountInfoContainerCount :: Integer
-                               , accountInfoBytesUsed      :: Integer
-                               , accountInfoTimestamp      :: Float
-                               } deriving (Eq, Show)
+-- data AccountInfo = AccountInfo { accountInfoContainerCount :: Integer
+--                                , accountInfoBytesUsed      :: Integer
+--                                , accountInfoTimestamp      :: Float
+--                                } deriving (Eq, Show)
 
-mkAccountInfo :: ResponseHeaders -> Either LazyByteString AccountInfo
-mkAccountInfo headers = do
-    accountInfoContainerCount <- parseHeader "x-account-object-count" int
-    accountInfoBytesUsed <- parseHeader "x-account-bytes-used" int
-    accountInfoTimestamp <- parseHeader "x-timestamp" float
-    accountInfoBytesUsed <- parseHeader "x-account-bytes-used" int
-    return AccountInfo { .. }
-  where
-    parseHeader HeaderName -> Parser v -> Either LazyByteString v
-    parseHeader name = findHeaderValue headers name . parse
+    -- accountInfoContainerCount <- parseHeader "x-account-object-count" int
+    -- accountInfoBytesUsed <- parseHeader "x-account-bytes-used" int
+    -- accountInfoTimestamp <- parseHeader "x-timestamp" float
+    -- accountInfoBytesUsed <- parseHeader "x-account-bytes-used" int
+    -- return AccountInfo { .. }
+
+newtype AccountInfo = AccountInfo [(StrictByteString, StrictByteString)]
+  deriving (Eq, Show)
+
+mkAccountInfoFromHeaders :: ResponseHeaders -> AccountInfo
+mkAccountInfoFromHeaders = AccountInfo . castHeadersToBsPair
 
 data Account = Account { accountInfo       :: AccountInfo
                        , accountContainers :: [ContainerInfo]
@@ -61,15 +72,16 @@ data Account = Account { accountInfo       :: AccountInfo
 
 getAccount :: (SwiftAuthenticator auth info) => Swift auth info Account
 getAccount = do
-    request <- setPreferableFormat <$> prepareRequestAndParseUrl conInfo
+    -- ??? join setPreferableFormat and prepareRequestAndParseUrl ???
+    request <- setPreferableFormat <$> prepareRequestAndParseUrl
     manager <- getManager
     response <- httpLbs request manager
     jsonContainers <- case parse json $ responseBody response of
         Fail _ _ _ -> monadThrow SomeSwiftException
         -- TODO: correct exception
-        Done _ r -> return r
-    let accountInfo = either (monadThrow . UnknownSwift)
-                             return
-                             (mkAccountInfo $ responseHeaders response)
-    accountContainers <- mapM mkContainerInfo jsonContainers
+        Done _ (Array r) -> return r
+        Done _ d -> monadThrow $
+            UnknownSwift $ "Containers list is not array: " <> (bs $ show d)
+    let accountInfo = mkAccountInfoFromHeaders $ responseHeaders response
+    accountContainers <- mkContainersInfoFromJson jsonContainers
     return Account { .. }

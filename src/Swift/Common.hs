@@ -1,23 +1,22 @@
 module Swift.Common
-    ( LazyByteString
-    , StrictByteString
-    , setPreferableFormat
+    ( setPreferableFormat
     , findHeaderValue
+    , castHeadersToBsPair
     ) where
 
 import Data.Monoid ((<>))
-import qualified Data.ByteString as StrictByteString
-import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Foldable as Foldable
 
+import Network.HTTP.Types.Header (ResponseHeaders)
 import Data.CaseInsensitive (original)
-import Data.Attoparsec.ByteString.Lazy (Parser, eitherResult, parse)
-import Network.HTTP.Types.Header (ResponseHeaders, Header, HeaderName)
+import Data.Attoparsec.ByteString (Parser, eitherResult, parse)
+import Network.HTTP.Types.Header (ResponseHeaders, HeaderName)
 import Network.HTTP.Conduit (Request(queryString))
 import Data.String.Like (bs)
+import qualified Data.Aeson as Aeson
+import qualified Data.HashMap.Strict as HashMap
 
-type LazyByteString = LazyByteString.ByteString
-type StrictByteString = StrictByteString.ByteString
+import Swift.Types (StrictByteString)
 
 -- TODO: cool query string builder
 setPreferableFormat :: Request m -> Request m
@@ -28,9 +27,15 @@ findHeaderValue :: ResponseHeaders
                 -> Parser a
                 -> Either StrictByteString a
 findHeaderValue headers name parser = do
-    bsValue <- maybe (Left $ "Can't find header " <> original $ name)
+    bsValue <- maybe (Left $ "Can't find header " <> (original $ name))
                            (return . snd)
                            (Foldable.find (\(n, _) -> n == name) headers)
     case eitherResult $ parse parser bsValue of
         Left s -> Left $ bs s
         Right r -> return r
+
+
+-- TODO: alias for pair
+castHeadersToBsPair :: ResponseHeaders
+                   -> [(StrictByteString, StrictByteString)]
+castHeadersToBsPair = map (\(name, value) -> (original name, value))
