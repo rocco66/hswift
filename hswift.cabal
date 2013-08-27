@@ -31,6 +31,7 @@ library
                  , stringlike           == 0.0.*
                  , unordered-containers == 0.2.*
                  , vector               == 0.10.*
+                 , failure              == 0.2.*
     exposed-modules: Swift
     default-extensions: LambdaCase
                         OverloadedStrings

@@ -39,13 +39,16 @@ import Control.Monad.Trans.Control (MonadBaseControl(..))
 import Control.Monad.Trans.Resource (MonadUnsafeIO(..))
 import Control.Monad (void)
 import qualified Data.ByteString.Lazy as LazyByteString
+import qualified Data.ByteString.Char8 as Char8
 
+import Control.Failure (Failure)
 import Data.Conduit (MonadResource, ResourceT, MonadThrow(monadThrow),
                      runResourceT)
 import Control.Monad.Catch (Exception)
-import Network.HTTP.Conduit (Request(method, secure, port), Response, Manager,
+import Network.HTTP.Conduit (Request(method, secure, port), Response,
+                             Manager,
                              newManager, def, httpLbs, responseStatus,
-                             managerResponseTimeout)
+                             managerResponseTimeout, parseUrl, HttpException)
 import Network.HTTP.Types (statusIsSuccessful)
 
 import Swift.Types (URL, LazyByteString, StrictByteString)
@@ -58,6 +61,7 @@ data SwiftException = NoStorageUrlSwiftException
                     | WrongPasswordSwiftException
                     | NoAuthHeaderSwiftException String
                     | CanNotMakeInfoStateSwiftException
+                    | NotJsonValueInHeader StrictByteString String
                     | UnknownSwift StrictByteString  -- split on many exceptions
                     | SomeSwiftException
      deriving (Show, Typeable)
@@ -83,7 +87,9 @@ newtype Swift auth info a = Swift { unSwift :: ReaderT auth
                                             (ResourceT IO)) a }
     deriving (Monad, Functor, Applicative, MonadReader auth,
               MonadState (SwiftState info), MonadIO, MonadThrow, MonadResource,
-              MonadUnsafeIO)
+              MonadUnsafeIO, Failure HttpException)
+
+-- TODO: write monad instance manually
 
 -- instance MonadTrans (Swift auth info) where
 --     lift a = Swift $ ReaderT $ StateT $ CatchT $ ResourceT $ \_ -> a
@@ -131,7 +137,8 @@ makeAuthentification :: (SwiftAuthenticator auth info)
                      => URL -> Swift auth info ()
 makeAuthentification url = do
     authentificator <- ask
-    let authReq = mkRequestAuthInfo authentificator defaultAuthReqeust
+    parsedUrl <- parseUrl $ Char8.unpack url
+    let authReq = mkRequestAuthInfo authentificator (fixSslPort parsedUrl url)
     manager <- getManager
 
     response <- httpLbs authReq manager
@@ -140,24 +147,22 @@ makeAuthentification url = do
                             putUserState $ mkInfoState response
         False -> monadThrow WrongPasswordSwiftException
   where
-    defaultAuthReqeust = if useHttps url then
-            def { method = "GET" , secure = True , port = 443 }
+    fixSslPort req url = if useHttps url then
+            req { secure = True, port = 443 }
         else
-            def { method = "GET" }
-
+            req
 
 
 prepareRequestAndParseUrl :: (SwiftAuthenticator auth info)
                           => Swift auth info (Request (Swift auth info))
 prepareRequestAndParseUrl = do
     conInfo <- getUserState
-    return $ prepareRequest conInfo (mkDefaultAuthRequest conInfo)
-  where
-    mkDefaultAuthRequest conInfo = if useHttps $ getStorageUrl conInfo then
-            def { secure = True , port = 443 }
+    let url = getStorageUrl conInfo
+    parsedUrl <- parseUrl $ Char8.unpack url
+    return $ prepareRequest conInfo $ if useHttps url then
+            parsedUrl { secure = True, port = 443}
         else
-            def
-
+            parsedUrl
 
 runSwift :: (SwiftAuthenticator auth info)
          => URL

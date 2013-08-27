@@ -15,4 +15,12 @@ data Object = Object { objectHeaders :: ObjectInfo
                      , objectData    :: StrictByteString }
   deriving (Eq, Show)
 
--- getObject = undefined
+getObject =
+
+headObject =
+
+putObject =
+
+postObject =
+
+deleteObject =

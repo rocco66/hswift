@@ -2,7 +2,9 @@
 
 module Swift.Account
     ( Account(..)
+    , headAccount
     , getAccount
+    , postAccount
     ) where
 
 import Data.ByteString.Lazy (toStrict)
@@ -26,9 +28,9 @@ import Swift.Monad (Swift, SwiftAuthenticator(..),
                     prepareRequestAndParseUrl)
 
 import Swift.Common (setPreferableFormat)
-import Swift.Types (StrictByteString, LazyByteString)
+import Swift.Types (StrictByteString, LazyByteString, Metadata)
 import Swift.Container (ContainerInfo, mkContainersInfoFromJson)
-import Swift.Common (castHeadersToBsPair)
+import Swift.Internal (castHeadersToMetadata, debug)
 
 -- containerCount :: (SwiftAuthenticator auth info)
 --                => Account
@@ -60,15 +62,25 @@ import Swift.Common (castHeadersToBsPair)
     -- accountInfoBytesUsed <- parseHeader "x-account-bytes-used" int
     -- return AccountInfo { .. }
 
-newtype AccountInfo = AccountInfo [(StrictByteString, StrictByteString)]
+newtype AccountInfo = AccountInfo Metadata
   deriving (Eq, Show)
 
 mkAccountInfoFromHeaders :: ResponseHeaders -> AccountInfo
-mkAccountInfoFromHeaders = AccountInfo . castHeadersToBsPair
+mkAccountInfoFromHeaders = AccountInfo . castHeadersToMetadata
 
 data Account = Account { accountInfo       :: AccountInfo
                        , accountContainers :: [ContainerInfo]
                        } deriving (Eq, Show)
+
+-- TODO: use Network-HTTP-Types-URI for query stuff
+
+headAccount = (SwiftAuthenticator auth info) => Swift auth info AccountInfo
+headAccount = do
+    request <- setPreferableFormat <$> prepareRequestAndParseUrl
+    manager <- getManager
+    response <- httpLbs (request {method = "HEAD"}) manager
+    debug jsonContainers
+    return $ mkAccountInfoFromHeaders $ responseHeaders response
 
 getAccount :: (SwiftAuthenticator auth info) => Swift auth info Account
 getAccount = do
@@ -82,6 +94,9 @@ getAccount = do
         Done _ (Array r) -> return r
         Done _ d -> monadThrow $
             UnknownSwift $ "Containers list is not array: " <> (bs $ show d)
+    debug jsonContainers
     let accountInfo = mkAccountInfoFromHeaders $ responseHeaders response
     accountContainers <- mkContainersInfoFromJson jsonContainers
     return Account { .. }
+
+postAccount =

@@ -18,15 +18,14 @@ import qualified Data.Aeson as Aeson
 
 import Swift.Monad (Swift, SwiftAuthenticator, SwiftException(UnknownSwift))
 import Swift.Object (ObjectInfo)
-import Swift.Types (StrictByteString, LazyByteString)
-import Swift.Common (castHeadersToBsPair)
-import Swift.Internal (castJsonObjectToBsPair)
+import Swift.Types (StrictByteString, LazyByteString, Metadata)
+import Swift.Internal (castJsonObjectToBsMetadata, castHeadersToMetadata)
 
 -- data ContainerInfo = ContainerInfo { containerInfoObjectCount :: Integer
 --                                    , containerInfoBytesUsed   :: Integer
 --                                    } deriving (Eq, Show)
 
-newtype ContainerInfo = ContainerInfo [(StrictByteString, StrictByteString)]
+newtype ContainerInfo = ContainerInfo Metadata
   deriving (Eq, Show)
 
 data Container = Container { containerHeaders :: ContainerInfo
@@ -35,17 +34,17 @@ data Container = Container { containerHeaders :: ContainerInfo
 
 -- TODO: rename Info to Meta
 mkContainerInfoFromHeaders :: ResponseHeaders -> ContainerInfo
-mkContainerInfoFromHeaders = ContainerInfo . castHeadersToBsPair
+mkContainerInfoFromHeaders = ContainerInfo . castHeadersToMetadata
 
 mkContainersInfoFromJson :: (SwiftAuthenticator auth info)
                          => Aeson.Array
                          -> Swift auth info [ContainerInfo]
-mkContainersInfoFromJson jsonContainer = do
-    containerInfo <- forM (Vector.toList jsonContainer) $ \case
-        (Aeson.Object obj) -> castJsonObjectToBsPair obj
+mkContainersInfoFromJson jsonContainers = do
+    containersInfo <- forM (Vector.toList jsonContainers) $ \case
+        (Aeson.Object obj) -> castJsonObjectToBsMetadata obj
         other -> monadThrow $ UnknownSwift $
             "Container is not a object" <> (bs $ show other)
-    return $ ContainerInfo <$> containerInfo
+    return $ ContainerInfo <$> containersInfo
     -- contianerInfoContainerCount <- findHeaderValue headers
     --                                "x-contianer-object-count" $ parse int
     -- contianerInfoBytesUsed <- findHeaderValue headers
@@ -55,5 +54,12 @@ mkContainersInfoFromJson jsonContainer = do
     -- contianerInfoBytesUsed <- findHeaderValue headers
     --     "x-contianer-bytes-used" $ parse int
 
+headContainer =
 
--- getContainer =
+getContainer =
+
+putContainer =
+
+postContainer =
+
+deleteConatiner =

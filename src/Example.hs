@@ -28,13 +28,14 @@ instance SwiftAuthenticator SelcdnAuth SwiftConnectInfo where
     prepareRequest SwiftConnectInfo { .. } =
         addHeader ("X-Auth-Token", swiftConnectToken)
     mkInfoState resp = do
-        swiftConnectInfoStorageUrl <- findHeaderInResponse "X-Storage-Url" resp
-        swiftConnectToken <- findHeaderInResponse "X-Storage-Token" resp
+        swiftConnectInfoStorageUrl <- findHeaderInResponse resp "X-Storage-Url"
+        swiftConnectToken <- findHeaderInResponse resp "X-Storage-Token"
         return SwiftConnectInfo { .. }
 
 test :: IO ()
 test = let
     authentificator = SelcdnAuth { selcdnAuthAccount = "7091_hswift"
                                  , selcdnAuthKey     = "bh18Px6zxg" }
-    authUrl = "https://auth.selcdn.ru" in
+    -- authUrl = "https://auth.selcdn.ru" in
+    authUrl = "http://auth.selcdn.ru" in
     runSwift authUrl authentificator (getAccount >>= liftIO . putStrLn . show)
