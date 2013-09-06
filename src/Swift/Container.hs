@@ -1,8 +1,8 @@
 module Swift.Container
     ( Container(..)
-    , ContainerInfo
-    , mkContainersInfoFromJson
-    -- , getContainer
+    , ContainerMetadata
+    , mkContainersMetadataFromJson
+    , getContainer
     ) where
 
 
@@ -13,53 +13,80 @@ import Control.Monad (forM)
 import Network.HTTP.Types.Header (ResponseHeaders)
 import Data.String.Like (bs)
 import Data.Conduit (MonadThrow(monadThrow))
+import Network.HTTP.Conduit (Request(method, secure, port, path), Response,
+                             Manager,
+                             newManager, def, httpLbs, responseStatus,
+                             managerResponseTimeout, parseUrl, HttpException,
+                             responseBody, responseHeaders)
+import Data.Attoparsec.ByteString (Parser, eitherResult)
+import Data.Attoparsec.ByteString.Lazy (Result(Fail, Done), parse)
+import Data.Aeson (Value(Array), json)
 import qualified Data.Vector as Vector
 import qualified Data.Aeson as Aeson
 
-import Swift.Monad (Swift, SwiftAuthenticator, SwiftException(UnknownSwift))
-import Swift.Object (ObjectInfo)
+import Swift.Monad (Swift, SwiftAuthenticator,
+                    SwiftException(UnknownSwift, SomeSwiftException),
+                    getManager, prepareRequestAndParseUrl)
+import Swift.Object (ObjectMetadata, mkObjectsMetadataFromJson)
 import Swift.Types (StrictByteString, LazyByteString, Metadata)
-import Swift.Internal (castJsonObjectToBsMetadata, castHeadersToMetadata)
+import Swift.Internal (castJsonObjectToBsMetadata, castHeadersToMetadata,
+                       addUriTokens)
+import Swift.Common (setPreferableFormat)
 
--- data ContainerInfo = ContainerInfo { containerInfoObjectCount :: Integer
---                                    , containerInfoBytesUsed   :: Integer
---                                    } deriving (Eq, Show)
-
-newtype ContainerInfo = ContainerInfo Metadata
+newtype ContainerMetadata = ContainerMetadata Metadata
   deriving (Eq, Show)
 
-data Container = Container { containerHeaders :: ContainerInfo
-                           , conatinerObjects :: [ObjectInfo] }
+data Container = Container { containerMetadata :: ContainerMetadata
+                           , conatinerObjects :: [ObjectMetadata] }
   deriving (Eq, Show)
 
--- TODO: rename Info to Meta
-mkContainerInfoFromHeaders :: ResponseHeaders -> ContainerInfo
-mkContainerInfoFromHeaders = ContainerInfo . castHeadersToMetadata
+mkContainerMetadataFromHeaders :: ResponseHeaders -> ContainerMetadata
+mkContainerMetadataFromHeaders = ContainerMetadata . castHeadersToMetadata
 
-mkContainersInfoFromJson :: (SwiftAuthenticator auth info)
-                         => Aeson.Array
-                         -> Swift auth info [ContainerInfo]
-mkContainersInfoFromJson jsonContainers = do
-    containersInfo <- forM (Vector.toList jsonContainers) $ \case
+mkContainersMetadataFromJson :: (SwiftAuthenticator auth info)
+                             => Aeson.Array
+                             -> Swift auth info [ContainerMetadata]
+mkContainersMetadataFromJson jsonContainers = do
+    containersMetadata <- forM (Vector.toList jsonContainers) $ \case
         (Aeson.Object obj) -> castJsonObjectToBsMetadata obj
         other -> monadThrow $ UnknownSwift $
             "Container is not a object" <> (bs $ show other)
-    return $ ContainerInfo <$> containersInfo
-    -- contianerInfoContainerCount <- findHeaderValue headers
-    --                                "x-contianer-object-count" $ parse int
-    -- contianerInfoBytesUsed <- findHeaderValue headers
-    --                           "x-contianer-bytes-used" $ parse int
-    -- contianerInfoTimestamp <- findHeaderValue headers
-    --                           "x-timestamp" $ parse float
-    -- contianerInfoBytesUsed <- findHeaderValue headers
-    --     "x-contianer-bytes-used" $ parse int
+    return $ ContainerMetadata <$> containersMetadata
 
-headContainer =
+-- headContainer :: (SwiftAuthenticator auth info)
+--               => String
+--               -> Swift auth info ContainerMetadata
+-- headContainer containerName = do
+--     defRequest <- setPreferableFormat <$> prepareRequestAndParseUrl
+--     manager <- getManager
+--     request <- addUriTokens [containerName] defRequest {method = "HEAD"}
+--     response <- httpLbs request manager
+--     return $ mkContainerMetadataFromHeaders $ responseHeaders response
 
-getContainer =
+getContainer :: (SwiftAuthenticator auth info)
+             => StrictByteString
+             -> Swift auth info Container
+getContainer containerName = do
+    -- ??? join setPreferableFormat and prepareRequestAndParseUrl ???
+    request <- setPreferableFormat <$> prepareRequestAndParseUrl
+    manager <- getManager
+    response <- httpLbs request {path = containerName} manager
+    jsonObjects <- case parse json $ responseBody response of
+        Fail _ _ _ -> monadThrow SomeSwiftException
+        -- TODO: correct exception
+        Done _ (Array r) -> return r
+        Done _ d -> monadThrow $
+            UnknownSwift $ "Objects list is not array: " <> (bs $ show d)
+    let containerMetadata = mkContainerMetadataFromHeaders $
+            responseHeaders response
+    containerObjects <- mkObjectsMetadataFromJson jsonObjects
+    return Container { .. }
 
-putContainer =
 
-postContainer =
+-- getContainer =
 
-deleteConatiner =
+-- putContainer =
+
+-- postContainer =
+
+-- deleteConatiner =
