@@ -5,7 +5,7 @@ author: Mitroshin Maxim <rocco66max@gmail.com>
 category: API
 synopsis: API for Open Stack Swift object storage.
 
-cabal-version: >= 1.16
+cabal-version: >= 1.18
 tested-with: GHC ==7.6.*
 build-type: Simple
 
