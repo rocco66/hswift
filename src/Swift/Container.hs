@@ -2,7 +2,11 @@ module Swift.Container
     ( Container(..)
     , ContainerMetadata
     , mkContainersMetadataFromJson
+    , headContainer
     , getContainer
+    , putContainer
+    , postContainer
+    , deleteContainer
     ) where
 
 
@@ -10,10 +14,12 @@ import Data.Monoid ((<>))
 import Data.Functor ((<$>))
 import Control.Monad (forM)
 
+-- TODO: extract all common imports in prelude
+
 import Network.HTTP.Types.Header (ResponseHeaders)
 import Data.String.Like (bs)
 import Data.Conduit (MonadThrow(monadThrow))
-import Network.HTTP.Conduit (Request(method, secure, port, path), Response,
+import Network.HTTP.Conduit (Request(method, path), Response,
                              Manager,
                              newManager, def, httpLbs, responseStatus,
                              managerResponseTimeout, parseUrl, HttpException,
@@ -21,6 +27,9 @@ import Network.HTTP.Conduit (Request(method, secure, port, path), Response,
 import Data.Attoparsec.ByteString (Parser, eitherResult)
 import Data.Attoparsec.ByteString.Lazy (Result(Fail, Done), parse)
 import Data.Aeson (Value(Array), json)
+import Network.HTTP.Types.Header (ResponseHeaders, Header)
+import Network.HTTP.Types (methodHead, methodPost, methodPut, methodDelete)
+import Control.Monad (void)
 import qualified Data.Vector as Vector
 import qualified Data.Aeson as Aeson
 
@@ -30,14 +39,15 @@ import Swift.Monad (Swift, SwiftAuthenticator,
 import Swift.Object (ObjectMetadata, mkObjectsMetadataFromJson)
 import Swift.Types (StrictByteString, LazyByteString, Metadata)
 import Swift.Internal (castJsonObjectToBsMetadata, castHeadersToMetadata,
-                       addUriTokens)
-import Swift.Common (setPreferableFormat)
+                       addUriTokens, setPreferableFormat)
+import Swift.Helpers (addHeaders)
+
 
 newtype ContainerMetadata = ContainerMetadata Metadata
   deriving (Eq, Show)
 
 data Container = Container { containerMetadata :: ContainerMetadata
-                           , conatinerObjects :: [ObjectMetadata] }
+                           , containerObjects :: [ObjectMetadata] }
   deriving (Eq, Show)
 
 mkContainerMetadataFromHeaders :: ResponseHeaders -> ContainerMetadata
@@ -53,15 +63,18 @@ mkContainersMetadataFromJson jsonContainers = do
             "Container is not a object" <> (bs $ show other)
     return $ ContainerMetadata <$> containersMetadata
 
--- headContainer :: (SwiftAuthenticator auth info)
---               => String
---               -> Swift auth info ContainerMetadata
--- headContainer containerName = do
---     defRequest <- setPreferableFormat <$> prepareRequestAndParseUrl
---     manager <- getManager
---     request <- addUriTokens [containerName] defRequest {method = "HEAD"}
---     response <- httpLbs request manager
---     return $ mkContainerMetadataFromHeaders $ responseHeaders response
+headContainer :: (SwiftAuthenticator auth info)
+              => StrictByteString
+              -> Swift auth info ContainerMetadata
+headContainer containerName = do
+    baseRequest <- setPreferableFormat <$> prepareRequestAndParseUrl
+    manager <- getManager
+    let request = baseRequest { method = methodHead
+                              , path = containerName }
+    response <- httpLbs request manager
+    return $ mkContainerMetadataFromHeaders $ responseHeaders response
+
+-- TODO extract common code in some function in Internal module
 
 getContainer :: (SwiftAuthenticator auth info)
              => StrictByteString
@@ -82,11 +95,34 @@ getContainer containerName = do
     containerObjects <- mkObjectsMetadataFromJson jsonObjects
     return Container { .. }
 
+putContainer :: (SwiftAuthenticator auth info)
+             => StrictByteString
+             -> Swift auth info ()
+putContainer containerName = do
+    baseRequest <- setPreferableFormat <$> prepareRequestAndParseUrl
+    manager <- getManager
+    let request = baseRequest { method = methodPut
+                              , path = containerName }
+    void $ httpLbs request manager
 
--- getContainer =
+postContainer :: (SwiftAuthenticator auth info)
+              => StrictByteString
+              => [Header]
+              -> Swift auth info ()
+postContainer containerName headers = do
+    baseRequest <- setPreferableFormat <$> prepareRequestAndParseUrl
+    manager <- getManager
+    -- TODO: get metadate not as Headers
+    let request = addHeaders headers baseRequest { method = methodPost
+                                                 , path = containerName }
+    void $ httpLbs request manager
 
--- putContainer =
-
--- postContainer =
-
--- deleteConatiner =
+deleteContainer :: (SwiftAuthenticator auth info)
+             => StrictByteString
+             -> Swift auth info ()
+deleteContainer containerName = do
+    baseRequest <- setPreferableFormat <$> prepareRequestAndParseUrl
+    manager <- getManager
+    let request = baseRequest { method = methodDelete
+                              , path = containerName }
+    void $ httpLbs request manager

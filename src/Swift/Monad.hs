@@ -152,7 +152,6 @@ makeAuthentification url = do
         else
             req
 
-
 prepareRequestAndParseUrl :: (SwiftAuthenticator auth info)
                           => Swift auth info (Request (Swift auth info))
 prepareRequestAndParseUrl = do

@@ -4,7 +4,7 @@ module Swift.Account
     ( Account(..)
     , headAccount
     , getAccount
-    -- , postAccount
+    , postAccount
     ) where
 
 import Data.ByteString.Lazy (toStrict)
@@ -12,10 +12,12 @@ import qualified Data.List as List
 
 import Data.Monoid ((<>))
 import Data.Functor ((<$>))
+import Control.Monad (void)
 
 import Data.Conduit (MonadThrow(monadThrow))
-import Network.HTTP.Conduit (def, httpLbs, responseBody, responseHeaders,
-                             method)
+import Network.HTTP.Types (methodPost)
+import Network.HTTP.Conduit (Request(method), def, httpLbs, responseBody,
+                             responseHeaders, method)
 import Network.HTTP.Types.Header (ResponseHeaders, Header)
 import Data.Aeson (Value(Array), json)
 import Data.Attoparsec.ByteString.Lazy (Result(Fail, Done), parse)
@@ -28,10 +30,10 @@ import Swift.Monad (Swift, SwiftAuthenticator(..),
                     SwiftException(SomeSwiftException, UnknownSwift),
                     prepareRequestAndParseUrl)
 
-import Swift.Common (setPreferableFormat)
 import Swift.Types (StrictByteString, LazyByteString, Metadata)
+import Swift.Helpers (addHeaders)
 import Swift.Container (ContainerMetadata, mkContainersMetadataFromJson)
-import Swift.Internal (castHeadersToMetadata, debug)
+import Swift.Internal (castHeadersToMetadata, setPreferableFormat, debug)
 
 newtype AccountMetadata = AccountMetadata Metadata
   deriving (Eq, Show)
@@ -39,7 +41,7 @@ newtype AccountMetadata = AccountMetadata Metadata
 mkAccountMetadataFromHeaders :: ResponseHeaders -> AccountMetadata
 mkAccountMetadataFromHeaders = AccountMetadata . castHeadersToMetadata
 
-data Account = Account { accountMetadata       :: AccountMetadata
+data Account = Account { accountMetadata   :: AccountMetadata
                        , accountContainers :: [ContainerMetadata]
                        } deriving (Eq, Show)
 
@@ -70,4 +72,12 @@ getAccount = do
     accountContainers <- mkContainersMetadataFromJson jsonContainers
     return Account { .. }
 
--- postAccount =
+postAccount :: (SwiftAuthenticator auth info)
+            => [Header]
+            -> Swift auth info ()
+postAccount headers = do
+    baseRequest <- setPreferableFormat <$> prepareRequestAndParseUrl
+    manager <- getManager
+    -- TODO: get metadate not as Headers
+    let request = addHeaders headers baseRequest {method = methodPost}
+    void $ httpLbs request manager

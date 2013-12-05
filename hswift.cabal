@@ -33,6 +33,14 @@ library
                  , vector               == 0.10.*
                  , failure              == 0.2.*
     exposed-modules: Swift
+    other-modules: Swift.Account
+                   Swift.Container
+                   Swift.Helpers
+                   Swift.Internal
+                   Swift.Monad
+                   Swift.Object
+                   Swift.Types
+                   Swift.Url
     default-extensions: LambdaCase
                         OverloadedStrings
                         RecordWildCards
