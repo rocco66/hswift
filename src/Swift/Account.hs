@@ -16,7 +16,7 @@ import Control.Monad (void)
 
 import Data.Conduit (MonadThrow(monadThrow))
 import Network.HTTP.Types (methodPost)
-import Network.HTTP.Conduit (Request(method), def, httpLbs, responseBody,
+import Network.HTTP.Conduit (Request(method), httpLbs, responseBody,
                              responseHeaders, method)
 import Network.HTTP.Types.Header (ResponseHeaders, Header)
 import Data.Aeson (Value(Array), json)

@@ -47,8 +47,9 @@ import Data.Conduit (MonadResource, ResourceT, MonadThrow(monadThrow),
 import Control.Monad.Catch (Exception)
 import Network.HTTP.Conduit (Request(method, secure, port), Response,
                              Manager,
-                             newManager, def, httpLbs, responseStatus,
+                             newManager, httpLbs, responseStatus,
                              managerResponseTimeout, parseUrl, HttpException)
+import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.HTTP.Types (statusIsSuccessful)
 
 import Swift.Types (URL, LazyByteString, StrictByteString)
@@ -73,13 +74,13 @@ instance Exception SwiftException
 
 class SwiftAuthenticator auth state | auth -> state, state -> auth where
     mkRequestAuthInfo :: auth
-                      -> Request (Swift auth state)
-                      -> Request (Swift auth state)
+                      -> Request
+                      -> Request
     mkInfoState :: Response LazyByteString.ByteString -> Maybe state
     getStorageUrl :: state -> StrictByteString
     prepareRequest :: state
-                   -> Request (Swift auth state)
-                   -> Request (Swift auth state)
+                   -> Request
+                   -> Request
     prepareRequest _s = id
 
 newtype Swift auth info a = Swift { unSwift :: ReaderT auth
@@ -153,7 +154,7 @@ makeAuthentification url = do
             req
 
 prepareRequestAndParseUrl :: (SwiftAuthenticator auth info)
-                          => Swift auth info (Request (Swift auth info))
+                          => Swift auth info (Request)
 prepareRequestAndParseUrl = do
     conInfo <- getUserState
     let url = getStorageUrl conInfo
@@ -169,7 +170,8 @@ runSwift :: (SwiftAuthenticator auth info)
          -> Swift auth info ()
          -> IO ()
 runSwift url authInfo action = do
-    manager <- newManager $ def { managerResponseTimeout = Just 60000000 }
+    manager <- newManager $
+        tlsManagerSettings { managerResponseTimeout = Just 60000000 }
     let initState = SwiftState { swiftStateManager = manager
                                , swiftStateInfo    = undefined } in
         void $ runResourceT

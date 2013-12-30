@@ -22,10 +22,10 @@ findHeaderInResponse resp name = findHeader name headers
   where
     headers = responseHeaders resp
 
-addHeader :: Header -> Request m -> Request m
+addHeader :: Header -> Request -> Request
 addHeader h = addHeaders [h]
 
-addHeaders :: [Header] -> Request m -> Request m
+addHeaders :: [Header] -> Request -> Request
 addHeaders headers req = req { requestHeaders = updatedHeaders }
   where
     updatedHeaders = requestHeaders req ++ headers
